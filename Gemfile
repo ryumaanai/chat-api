@@ -60,7 +60,6 @@ group :development do
   # gem "spring"
 
   # Easy-to-use client library for making requests from Ruby [https://github.com/httprb/http]
-  gem "http"
 end
 
 group :test do
