@@ -1,17 +1,21 @@
-<% if @chat_thread.present? %>
+<% if @chat_thread %>
   <pre style="display: none;"><%= @chat_thread.context %></pre>
   <h1 id="thread-title"><%= @chat_thread.title %></h1>
+  <div id="thread-controls">
+    <button id="create-new-thread-btn" class="thread-control-btn">+</button>
+    <button id="show-threads-btn" class="thread-control-btn">❏</button>
+  </div> 
   <div id="chat-container">
     <div id="prompts-list">
       <% @chat_thread.prompts.each do |prompt| %>
         <% if prompt.content.present? %>
           <div class="prompt-box">
-              <p class="prompt">You:</p>
-              <p class="prompt-text"><%= simple_format(h(prompt.content)) %></p>
+            <p class="prompt">You:</p>
+            <p class="prompt-text"><%= simple_format(h(prompt.content)) %></p>
           </div>
           <div class="response-box">
-              <p class="response">GPT:</p>
-              <p class="response-text" data-markdown><%= prompt.response %></p>
+            <p class="response">GPT:</p>
+            <p class="response-text" data-markdown><%= prompt.response %></p>
           </div>
         <% end %>
       <% end %>
@@ -24,11 +28,14 @@
     </div>
   <% end %>
 <% else %>
+  <div id="thread-controls">
+    <button id="show-threads-btn" class="thread-control-btn">❏</button>
+  </div>
   <div class="center-container">
-    <button id="new-thread-btn">Start New Chat ▶</button>
+    <button id="start-new-thread-btn">Start New Chat ▶</button>
   </div>
 <% end %>
-<button id="show-threads-btn">+</button>
+
 <div id="threads-modal">
   <div id="threads-modal-content">
     <button id="close-threads-btn">&times;</button>

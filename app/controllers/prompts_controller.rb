@@ -1,24 +1,19 @@
 require 'http'
 
 class PromptsController < ApplicationController
-  def index
-    @chat_thread = ChatThread.find_by(id: params[:chat_thread_id])
-    @prompt = @chat_thread.prompts.build if @chat_thread.present?
-  end
-
   def create
     @chat_thread = ChatThread.find(params[:chat_thread_id])
     @prompt = @chat_thread.prompts.build(prompt_params)
-
+  
     context = @chat_thread.context || ""
     full_prompt = context + "\n" + @prompt.content
     
     response = openai_api_call(full_prompt)
-
+  
     if response.status.success?
       response_body = JSON.parse(response.body.to_s)
       @prompt.response = response_body['choices'][0]['message']['content']
-
+  
       if @chat_thread.prompts.count == 0
         generated_title = generate_title(@prompt.content)
         @chat_thread.update(title: generated_title)
@@ -26,12 +21,16 @@ class PromptsController < ApplicationController
       
       if @prompt.save
         @chat_thread.update_context(@prompt.content + "\n" + @prompt.response)
-        render json: { text: @prompt.response }
+        render json: { 
+          text: @prompt.response,  # 'prompt' から 'text' に変更
+          thread_title: @chat_thread.title,
+          # prompt_id: @prompt.id  # プロンプトのIDも含める（必要に応じて）
+        }
       else
         render json: { error: @prompt.errors.full_messages.join(', ') }, status: :unprocessable_entity
       end
     else
-      render json: { error: 'APIリクエストが失敗しました' }, status: :unprocessable_entity
+      render json: { error: 'Failed to get response from AI' }, status: :service_unavailable
     end
   end
 

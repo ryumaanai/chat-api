@@ -1,8 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('.response-text[data-markdown]').forEach(elem => {
-    elem.innerHTML = marked.parse(elem.textContent);
-  });
-  
+  // 必要な要素の取得
   const form = document.getElementById('generation-form');
   const promptsList = document.getElementById('prompts-list');
   const showThreadsBtn = document.getElementById('show-threads-btn');
@@ -10,22 +7,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const closeThreadsBtn = document.getElementById('close-threads-btn');
   const threadsList = document.getElementById('threads-list');
   const newThreadBtn = document.getElementById('new-thread-btn');
-  
+  const chatContainer = document.getElementById('chat-container');
+  const threadTitle = document.getElementById('thread-title');
+
+  // Markdownの初期レンダリング
+  renderMarkdown();
+  scrollToBottom();
+
+  // イベントリスナーの設定
   if (form) {
-    scrollToBottom();
-    const textarea = form.querySelector('textarea');
-
     form.addEventListener('submit', handleFormSubmit);
+    const textarea = form.querySelector('textarea');
     textarea.addEventListener('input', () => autoResizeTextarea(textarea));
-
-    textarea.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-        e.preventDefault();
-        if (isValidInput(textarea.value)) {
-          form.dispatchEvent(new Event('submit'));
-        }
-      }
-    });
+    textarea.addEventListener('keydown', handleTextareaKeydown);
   }
 
   if (showThreadsBtn) {
@@ -55,6 +49,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // 関数定義
+  function handleTextareaKeydown(e) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      if (isValidInput(e.target.value)) {
+        form.dispatchEvent(new Event('submit'));
+      }
+    }
+  }
+
   function isValidInput(input) {
     return /\S/.test(input);
   }
@@ -66,10 +70,10 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     const formData = new FormData(form);
-    const promptContent = form.querySelector('textarea').value;
+    const promptContent = textarea.value;
     const targetElement = appendPromptElement(promptContent);
     form.reset();
-    resetTextareaSize(form.querySelector('textarea'));
+    resetTextareaSize(textarea);
     sendPromptToAPI(formData, targetElement);
   }
 
@@ -91,28 +95,27 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function sendPromptToAPI(formData, promptElement) {
-    const responseTextContainer = promptElement;
     fetch(form.action, {
       method: 'POST',
       body: formData,
       headers: {
-        'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
+        'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content,
+        'Accept': 'application/json'
       }
     })
     .then(response => response.json())
     .then(data => {
-      displayResponse(data.text, responseTextContainer);
+      displayResponse(data.text, promptElement);
       if (data.thread_title) {
         updateThreadTitleDisplay(data.thread_title);
       }
     })
-    .catch(error => handleAPIError(error, responseTextContainer));
+    .catch(error => handleAPIError(error, promptElement));
   }
 
   function updateThreadTitleDisplay(title) {
-    const titleElement = document.getElementById('thread-title');
-    if (titleElement) {
-      titleElement.textContent = title;
+    if (threadTitle) {
+      threadTitle.textContent = title;
     } else {
       const newTitleElement = document.createElement('h1');
       newTitleElement.id = 'thread-title';
@@ -142,8 +145,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function scrollToBottom() {
-    const chatContainer = document.getElementById('chat-container');
-    chatContainer.scrollTop = chatContainer.scrollHeight;
+    if (chatContainer) {
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
   }
 
   function handleAPIError(error, container) {
@@ -164,7 +168,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function fetchChatThreads() {
-    fetch('/chat_threads')
+    fetch('/chat_threads', {
+      headers: {
+        'Accept': 'application/json'
+      }
+    })
       .then(response => response.json())
       .then(data => {
         threadsList.innerHTML = '';
@@ -172,7 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const threadItem = document.createElement('div');
           threadItem.classList.add('thread-item');
           threadItem.dataset.chatThreadId = chatThread.id;
-          threadItem.textContent = `${chatThread.title}`;
+          threadItem.textContent = chatThread.title;
           threadsList.appendChild(threadItem);
         });
       })
@@ -182,8 +190,92 @@ document.addEventListener('DOMContentLoaded', () => {
   function handleThreadSelection(event) {
     if (event.target.classList.contains('thread-item')) {
       const chatThreadId = event.target.dataset.chatThreadId;
-      window.location.href = `/prompts?chat_thread_id=${chatThreadId}`;
+      fetchAndDisplayThread(chatThreadId);
     }
+  }
+
+  function fetchAndDisplayThread(chatThreadId) {
+    fetch(`/chat_threads/${chatThreadId}`, {
+      headers: {
+        'Accept': 'application/json'
+      }
+    })
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return response.json();
+    })
+    .then(data => {
+      console.log('Received data:', data); // デバッグ用ログ
+      if (data.chat_thread) {
+        history.pushState(null, '', `/chat_threads/${chatThreadId}`);
+        hideThreadsModal();
+        updateChatInterface(data.chat_thread, data.prompts);
+      } else {
+        throw new Error('Chat thread data is missing');
+      }
+    })
+    .catch(error => {
+      console.error('スレッドの取得に失敗しました', error);
+      alert('スレッドの読み込みに失敗しました。もう一度お試しください。');
+    });
+  }
+  
+  function updateChatInterface(chatThread, prompts) {
+    console.log('Received chat thread:', chatThread); // デバッグ用ログ
+    console.log('Received prompts:', prompts); // デバッグ用ログ
+  
+    if (threadTitle) {
+      threadTitle.textContent = chatThread.title || 'Untitled Thread';
+    }
+  
+    if (promptsList) {
+      promptsList.innerHTML = '';
+      if (prompts && Array.isArray(prompts)) {
+        prompts.forEach(prompt => {
+          if (prompt.content) {
+            appendPrompt(prompt.content, prompt.response);
+          }
+        });
+      } else {
+        console.warn('No prompts found or prompts is not an array');
+      }
+    }
+  
+    if (form) {
+      form.action = `/chat_threads/${chatThread.id}/prompts`;
+    }
+  
+    const centerContainer = document.querySelector('.center-container');
+    if (centerContainer) {
+      centerContainer.style.display = 'none';
+    }
+    if (chatContainer) {
+      chatContainer.style.display = 'block';
+    }
+    if (showThreadsBtn) {
+      showThreadsBtn.style.display = 'block';
+    }
+  
+    renderMarkdown();
+    scrollToBottom();
+  }
+
+  // 新しい関数: プロンプトを追加する
+  function appendPrompt(content, response) {
+    const promptElement = document.createElement('div');
+    promptElement.innerHTML = `
+      <div class="prompt-box">
+        <p class="prompt">You:</p>
+        <p class="prompt-text">${formatText(content)}</p>
+      </div>
+      <div class="response-box">
+        <p class="response">GPT:</p>
+        <p class="response-text" data-markdown>${response}</p>
+      </div>
+    `;
+    promptsList.appendChild(promptElement);
   }
 
   function createNewThread() {
@@ -191,13 +283,14 @@ document.addEventListener('DOMContentLoaded', () => {
       method: 'POST',
       headers: {
         'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
       }
     })
     .then(response => response.json())
     .then(data => {
       if (data.chat_thread) {
-        window.location.href = `/prompts?chat_thread_id=${data.chat_thread.id}`;
+        fetchAndDisplayThread(data.chat_thread.id);
       } else {
         console.error('新規スレッドの作成に失敗しました', data.errors);
       }
@@ -212,5 +305,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function resetTextareaSize(textarea) {
     textarea.style.height = 'auto';
+  }
+
+  function renderMarkdown() {
+    document.querySelectorAll('.response-text[data-markdown]').forEach(elem => {
+      elem.innerHTML = marked.parse(elem.textContent);
+    });
+  }
+
+  // 新しい関数: スレッド一覧モーダルを非表示にする
+  function hideThreadsModal() {
+    threadsModal.style.display = 'none';
   }
 });

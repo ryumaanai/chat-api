@@ -1,12 +1,26 @@
 class ChatThreadsController < ApplicationController
   def index
     @chat_threads = ChatThread.order(created_at: :desc)
-    render json: { chat_threads: @chat_threads }
+
+    respond_to do |format|
+      format.html
+      format.json { render json: { chat_threads: @chat_threads } }
+    end
   end
 
   def show
     @chat_thread = ChatThread.find(params[:id])
-    render json: { prompts: @chat_thread.prompts }
+    @prompt = @chat_thread.prompts.build
+
+    respond_to do |format|
+      format.html { render 'index' }
+      format.json { 
+        render json: {
+          chat_thread: @chat_thread,
+          prompts: @chat_thread.prompts.order(created_at: :asc)
+        }
+      }
+    end
   end
 
   def create
