@@ -1,20 +1,18 @@
 document.addEventListener('DOMContentLoaded', () => {
-  // 必要な要素の取得
-  const form = document.getElementById('generation-form');
-  const promptsList = document.getElementById('prompts-list');
-  const showThreadsBtn = document.getElementById('show-threads-btn');
+  let chatContainer = document.getElementById('chat-container');
+  let promptsList = document.getElementById('prompts-list');
+  let threadTitle = document.getElementById('thread-title');
+  let showThreadsBtn = document.getElementById('show-threads-btn');
   const threadsModal = document.getElementById('threads-modal');
   const closeThreadsBtn = document.getElementById('close-threads-btn');
   const threadsList = document.getElementById('threads-list');
-  const newThreadBtn = document.getElementById('new-thread-btn');
-  const chatContainer = document.getElementById('chat-container');
-  const threadTitle = document.getElementById('thread-title');
+  let newThreadBtn = document.getElementById('new-thread-btn');
+  let form = document.getElementById('generation-form');
+  let threadControls = document.getElementById('thread-controls');
 
-  // Markdownの初期レンダリング
   renderMarkdown();
   scrollToBottom();
 
-  // イベントリスナーの設定
   if (form) {
     form.addEventListener('submit', handleFormSubmit);
     const textarea = form.querySelector('textarea');
@@ -49,7 +47,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 関数定義
   function handleTextareaKeydown(e) {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
@@ -207,7 +204,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return response.json();
     })
     .then(data => {
-      console.log('Received data:', data); // デバッグ用ログ
+      console.log('Received data:', data);
       if (data.chat_thread) {
         history.pushState(null, '', `/chat_threads/${chatThreadId}`);
         hideThreadsModal();
@@ -223,46 +220,81 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   
   function updateChatInterface(chatThread, prompts) {
-    console.log('Received chat thread:', chatThread); // デバッグ用ログ
-    console.log('Received prompts:', prompts); // デバッグ用ログ
-  
-    if (threadTitle) {
-      threadTitle.textContent = chatThread.title || 'Untitled Thread';
-    }
-  
-    if (promptsList) {
-      promptsList.innerHTML = '';
-      if (prompts && Array.isArray(prompts)) {
-        prompts.forEach(prompt => {
-          if (prompt.content) {
-            appendPrompt(prompt.content, prompt.response);
-          }
-        });
-      } else {
-        console.warn('No prompts found or prompts is not an array');
-      }
-    }
-  
-    if (form) {
-      form.action = `/chat_threads/${chatThread.id}/prompts`;
-    }
-  
+    console.log('Received chat thread:', chatThread);
+    console.log('Received prompts:', prompts);
+
     const centerContainer = document.querySelector('.center-container');
     if (centerContainer) {
-      centerContainer.style.display = 'none';
+      centerContainer.remove();
     }
-    if (chatContainer) {
-      chatContainer.style.display = 'block';
+
+    if (!threadControls.querySelector('#new-thread-btn')) {
+      const newThreadBtn = document.createElement('button');
+      newThreadBtn.id = 'new-thread-btn';
+      newThreadBtn.className = 'thread-control-btn';
+      newThreadBtn.textContent = '+';
+      newThreadBtn.addEventListener('click', createNewThread);
+      threadControls.insertBefore(newThreadBtn, threadControls.firstChild);
     }
+
+    // 新しいHTMLの挿入
+    const newHtml = `
+      <pre style="display: none;">${chatThread.context || ''}</pre>
+      <h1 id="thread-title">${chatThread.title || 'Untitled Thread'}</h1>
+      <div id="thread-controls">
+        <button id="new-thread-btn" class="thread-control-btn">+</button>
+        <button id="show-threads-btn" class="thread-control-btn">❏</button>
+      </div> 
+      <div id="chat-container">
+        <div id="prompts-list"></div>
+      </div>
+      <form id="generation-form" action="/chat_threads/${chatThread.id}/prompts" data-remote="true">
+        <div class="textarea-with-submit-inside">
+          <textarea name="prompt[content]" class="rounded-corners"></textarea>
+          <input type="submit" value="↑" class="submit-within-textarea rounded-corners">
+        </div>
+      </form>
+    `;
+
+    document.body.insertAdjacentHTML('afterbegin', newHtml);
+
+    chatContainer = document.getElementById('chat-container');
+    promptsList = document.getElementById('prompts-list');
+    threadTitle = document.getElementById('thread-title');
+    showThreadsBtn = document.getElementById('show-threads-btn');
+    newThreadBtn = document.getElementById('new-thread-btn');
+    form = document.getElementById('generation-form');
+
+    if (prompts && Array.isArray(prompts)) {
+      prompts.forEach(prompt => {
+        if (prompt.content) {
+          appendPrompt(prompt.content, prompt.response);
+        }
+      });
+    }
+
+    initializeForm(form);
     if (showThreadsBtn) {
-      showThreadsBtn.style.display = 'block';
+      showThreadsBtn.addEventListener('click', () => {
+        fetchChatThreads();
+        threadsModal.style.display = 'flex';
+      });
     }
-  
+    if (newThreadBtn) {
+      newThreadBtn.addEventListener('click', createNewThread);
+    }
+
     renderMarkdown();
     scrollToBottom();
   }
 
-  // 新しい関数: プロンプトを追加する
+  function initializeForm(formElement) {
+    formElement.addEventListener('submit', handleFormSubmit);
+    const textarea = formElement.querySelector('textarea');
+    textarea.addEventListener('input', () => autoResizeTextarea(textarea));
+    textarea.addEventListener('keydown', handleTextareaKeydown);
+  }
+
   function appendPrompt(content, response) {
     const promptElement = document.createElement('div');
     promptElement.innerHTML = `
@@ -290,7 +322,8 @@ document.addEventListener('DOMContentLoaded', () => {
     .then(response => response.json())
     .then(data => {
       if (data.chat_thread) {
-        fetchAndDisplayThread(data.chat_thread.id);
+        updateChatInterface(data.chat_thread, []);
+        history.pushState(null, '', `/chat_threads/${data.chat_thread.id}`);
       } else {
         console.error('新規スレッドの作成に失敗しました', data.errors);
       }
@@ -313,7 +346,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 新しい関数: スレッド一覧モーダルを非表示にする
   function hideThreadsModal() {
     threadsModal.style.display = 'none';
   }
